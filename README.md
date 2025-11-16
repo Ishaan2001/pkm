@@ -1,189 +1,173 @@
 # Knowledge Base PWA
 
-A modern note-taking Progressive Web App with AI-powered summaries and daily push notifications. Built with React, FastAPI, and Google Gemini AI.
+A simple note-taking Progressive Web App with AI-powered summaries and push notifications. Built with React + TypeScript frontend and FastAPI + Python backend.
 
 ## ✨ Features
 
 ### 📝 Note Management
-- **Create, edit, and delete notes** with a clean, dark-themed interface
-- **Real-time note editing** with character counters and autosave
-- **Note browsing** with search and filtering capabilities
+- Create notes with a floating action button
+- View notes in a clean card layout with AI summaries
+- Edit notes with content update and AI summary regeneration
+- Delete notes with confirmation modal
+- Real-time AI summary polling (checks every 2 seconds for 20 seconds)
 
 ### 🤖 AI Integration
-- **AI-powered summaries** using Google Gemini for every note
-- **Smart polling system** that waits for AI processing completion
-- **Regenerate summaries** option when editing notes
-- **Optimized prompts** for concise, actionable insights
+- **Google Gemini API** integration for automatic note summarization
+- **Smart prompting** designed for 40-word concise summaries optimized for notifications
+- **Fallback models**: gemini-2.5-flash → gemini-2.5-pro → gemini-2.0-flash
+- **Background processing** - summaries generate asynchronously
+- **Retry logic** with exponential backoff for API reliability
 
 ### 🔔 Push Notifications
-- **Daily reminders at 7 PM India time** with AI summaries
-- **Real browser push notifications** using Web Push Protocol
-- **Smart subscription management** with automatic cleanup
-- **Round-robin note selection** ensures variety in reminders
-- **Click-to-navigate** directly to specific notes
+- **Daily reminders at 7:00 PM India time** (1:30 PM UTC)
+- **Browser push notifications** using Web Push Protocol with VAPID authentication
+- **Service worker** registration for push subscription management
+- **Round-robin note selection** for daily reminders
+- **Subscription persistence** in SQLite database
+- **Test endpoint** for immediate notification testing
 
-### 📱 Progressive Web App
-- **Installable** as a native app on mobile and desktop
-- **Service worker** for offline functionality and push notifications
-- **App manifest** with proper icons and theming
-- **Responsive design** that works on all devices
-
-### 🎨 Modern UI/UX
-- **Dark theme** with orange accent colors (#F97316)
-- **Clean design language** with consistent spacing and typography
-- **Smooth animations** and transitions throughout
-- **Orange-themed loading indicators** and progress states
+### 🎨 UI/UX
+- **Dark theme** with black background and orange (#F97316) accent colors
+- **Custom CSS classes** for consistent styling (note-card, btn-primary, etc.)
+- **Loading states** with orange spinners during AI summary generation
+- **Responsive design** with mobile-friendly floating action button
+- **Time formatting** with "just now", "5m ago", "2h ago" relative timestamps
 
 ## 🏗️ Architecture
 
 ### Frontend (`/frontend/`)
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite for fast development and building
-- **Styling**: Tailwind CSS v3.4.0 with custom dark theme
-- **State Management**: React Context API for notes and app state
-- **Routing**: React Router v7 for navigation
-- **PWA**: Service worker for push notifications and caching
+- **React 19** with TypeScript and Vite
+- **React Router v7** for client-side routing (`/`, `/note/:id`)
+- **React Context** for state management (NotesContext)
+- **Tailwind CSS 3.4.0** for styling with custom component classes
+- **Service Worker** for push notification registration
+- **Manual API calls** - no external HTTP library used
 
 ### Backend (`/backend/`)
-- **Framework**: FastAPI with Python 3.13
-- **Database**: SQLAlchemy ORM with SQLite
-- **AI Service**: Google Gemini API (2.5-flash, 2.5-pro, 2.0-flash models)
-- **Scheduler**: APScheduler for daily notification reminders
-- **Push Notifications**: pywebpush with VAPID authentication
-- **CORS**: Configured for frontend integration
+- **FastAPI** with Python 3.13
+- **SQLAlchemy ORM** with SQLite database (`notes.db`)
+- **APScheduler** for daily notification cron jobs
+- **pywebpush** for actual browser push notifications
+- **Google Generative AI** for note summarization
+- **CORS enabled** for localhost:5173/5174 frontend integration
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Python 3.13+**
-- **Node.js 18+**
-- **Google Gemini API Key**
+- Python 3.13+
+- Node.js 18+
+- Google Gemini API Key
 
-### Installation
+### Backend Setup
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd pkm_pwa
-   ```
+# Create .env file
+echo "GEMINI_API_KEY=your_google_gemini_api_key" > .env
 
-2. **Setup Backend**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+python main.py
+```
+Backend runs on: http://127.0.0.1:8000
 
-3. **Environment Configuration**
-   Create a `.env` file in the backend directory:
-   ```env
-   GEMINI_API_KEY=your_google_gemini_api_key_here
-   ```
-
-4. **Setup Frontend**
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-### Running the Application
-
-1. **Start Backend Server**
-   ```bash
-   cd backend
-   source venv/bin/activate
-   python main.py
-   ```
-   Backend runs on: http://127.0.0.1:8000
-
-2. **Start Frontend Development Server**
-   ```bash
-   cd frontend
-   npm run dev
-   ```
-   Frontend runs on: http://localhost:5174
-
-### Building for Production
-
+### Frontend Setup
 ```bash
 cd frontend
-npm run build
-npm run typecheck
-npm run lint
+npm install
+npm run dev
 ```
+Frontend runs on: http://localhost:5174
 
-## 📊 Database Schema
+## 🗄️ Database Schema
 
-### Notes Table
-```sql
-CREATE TABLE notes (
-    id INTEGER PRIMARY KEY,
-    content TEXT NOT NULL,
-    ai_summary TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
+**Notes Table:**
+- `id` (Primary Key)
+- `content` (TEXT)
+- `ai_summary` (TEXT, nullable)
+- `created_at`, `updated_at` (UTC timestamps)
 
-### Push Subscriptions Table
-```sql
-CREATE TABLE push_subscriptions (
-    id INTEGER PRIMARY KEY,
-    endpoint TEXT UNIQUE NOT NULL,
-    p256dh_key TEXT NOT NULL,
-    auth_key TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
+**Push Subscriptions Table:**
+- `id` (Primary Key)
+- `endpoint` (TEXT, unique)
+- `p256dh_key`, `auth_key` (TEXT)
+- `is_active` (BOOLEAN)
+- `created_at`, `updated_at` (UTC timestamps)
 
 ## 🔌 API Endpoints
 
 ### Notes
 - `GET /api/notes` - List all notes
-- `POST /api/notes` - Create new note (triggers AI summary)
+- `POST /api/notes` - Create note (triggers background AI summary)
 - `GET /api/notes/{id}` - Get specific note
-- `PUT /api/notes/{id}` - Update note with optional AI regeneration
+- `PUT /api/notes/{id}` - Update note with optional `regenerate_summary`
 - `DELETE /api/notes/{id}` - Delete note
 
 ### Notifications
-- `POST /api/notifications/subscribe` - Register for push notifications
+- `POST /api/notifications/subscribe` - Register push subscription
 - `POST /api/notifications/test` - Send test notification
 
 ### Health
-- `GET /health` - Health check endpoint
+- `GET /` - API status
+- `GET /health` - Health check
 
 ## 🔔 Notification System
 
-### Daily Schedule
-- **Time**: 7:00 PM India Standard Time (13:30 UTC)
-- **Frequency**: Once per day
-- **Content**: AI-generated note summaries
-- **Selection**: Round-robin through all notes with summaries
+### How It Works
+1. **User enables notifications** → Browser requests permission
+2. **Service worker registers** → Creates push subscription with VAPID keys
+3. **Subscription sent to backend** → Stored in database
+4. **Daily scheduler runs** → Selects random note with AI summary
+5. **Push notification sent** → Using pywebpush to browser via FCM
+
+### Schedule
+- **Daily at 7:00 PM India time** (13:30 UTC)
+- **Round-robin note selection** from notes with AI summaries
+- **Automatic cleanup** of expired/invalid subscriptions
 
 ### Testing
-- **Manual Test**: `curl -X POST http://localhost:8000/api/notifications/test`
-- **Browser Setup**: Enable notifications when prompted on first visit
-- **Debugging**: Check browser dev tools → Application → Service Workers
+```bash
+# Test notifications manually
+curl -X POST http://localhost:8000/api/notifications/test
+```
 
-## 🛠️ Technology Stack
+## 🛠️ Technical Implementation
 
-### Frontend Dependencies
+### Frontend State Management
+- **NotesContext** provides CRUD operations
+- **Polling mechanism** for AI summary updates
+- **Local storage** for notification preferences
+- **Error boundaries** for API failures
+
+### Backend Processing
+- **Background tasks** for AI summary generation using FastAPI BackgroundTasks
+- **Database session management** with SQLAlchemy dependency injection
+- **Async scheduling** with APScheduler for notifications
+- **VAPID authentication** for secure push notifications
+
+### AI Summary Generation
+- **Optimized prompt** for concise 40-word summaries
+- **Model fallback chain** ensures high availability
+- **Retry logic** with exponential backoff
+- **Background processing** doesn't block note creation
+
+## 📦 Dependencies
+
+### Frontend
 ```json
 {
   "react": "^19.2.0",
-  "react-dom": "^19.2.0",
+  "react-dom": "^19.2.0", 
   "react-router-dom": "^7.9.6",
   "tailwindcss": "^3.4.0",
-  "vite-plugin-pwa": "^1.1.0",
-  "typescript": "~5.9.3"
+  "typescript": "~5.9.3",
+  "vite": "^7.2.2"
 }
 ```
 
-### Backend Dependencies
-```txt
+### Backend
+```
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 sqlalchemy>=2.0.0
@@ -191,63 +175,66 @@ google-generativeai>=0.3.0
 pydantic>=2.8.0
 apscheduler>=3.10.0
 pywebpush>=1.14.0
-ecdsa
+ecdsa  # For VAPID key generation
 ```
 
-## 🎨 Design System
+## 🎨 Styling System
 
-### Colors
-- **Primary Background**: `#000000` (Black)
-- **Secondary Background**: `#111827` (Gray-900)
-- **Accent**: `#F97316` (Orange-500)
-- **Text**: `#FFFFFF` (White)
-- **Muted Text**: `#9CA3AF` (Gray-400)
+### Custom CSS Classes (in `index.css`)
+- `.note-card` - Note card styling with hover effects
+- `.btn-primary` - Orange buttons (#F97316)
+- `.btn-secondary` - Gray buttons
+- `.input-field` - Form inputs with orange focus
+- `.floating-add-button` - Fixed position add button
 
-### Components
-- **Cards**: Gray-900 background with gray-800 borders
-- **Buttons**: Orange primary, gray secondary
-- **Forms**: Dark inputs with orange focus states
-- **Icons**: Consistent sizing and orange accents
+### Color Scheme
+- **Background**: Black (#000000)
+- **Cards**: Gray-900 (#111827) 
+- **Borders**: Gray-800 (#1F2937)
+- **Accent**: Orange-500 (#F97316)
+- **Text**: White/Gray
 
-## 📝 Development Notes
+## 🚀 Deployment Notes
 
-### Code Quality
-- **TypeScript** for type safety throughout frontend
-- **ESLint** configuration for code consistency
-- **Tailwind CSS** for utility-first styling
-- **Error boundaries** and proper error handling
+### Production Checklist
+- [ ] Update VAPID email in `push_service.py`
+- [ ] Configure production CORS origins
+- [ ] Set up environment variables for Gemini API
+- [ ] Use PostgreSQL instead of SQLite for production
+- [ ] Set up proper logging and monitoring
+- [ ] Configure HTTPS for PWA requirements
 
-### Performance
-- **Lazy loading** for components and routes
-- **Optimized AI polling** with exponential backoff
-- **Service worker caching** for offline functionality
-- **Database indexing** on frequently queried fields
+### Environment Variables
+```bash
+# Backend (.env)
+GEMINI_API_KEY=your_google_gemini_api_key
+```
 
-### Security
-- **CORS** properly configured for cross-origin requests
-- **VAPID authentication** for secure push notifications
-- **Input validation** with Pydantic schemas
-- **Error sanitization** to prevent information leakage
+## 🔧 Development Commands
 
-## 🤝 Contributing
+```bash
+# Backend
+cd backend && source venv/bin/activate && python main.py
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+# Frontend  
+cd frontend && npm run dev
 
-## 📄 License
+# Type checking
+cd frontend && npm run build
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+# Linting
+cd frontend && npm run lint
+```
 
-## 🙏 Acknowledgments
+## 🐛 Known Limitations
 
-- **Google Gemini** for AI-powered note summarization
-- **Tailwind CSS** for the utility-first CSS framework
-- **FastAPI** for the modern Python web framework
-- **React** for the component-based frontend architecture
+- **SQLite database** - not suitable for production scale
+- **In-memory scheduling** - notification state lost on restart
+- **Single timezone** - hardcoded for India time
+- **No user authentication** - single-user application
+- **Local storage only** - no cloud sync
+- **Basic error handling** - limited retry mechanisms
 
 ---
 
-**Built with ❤️ for better knowledge management and memory retention**
+**A clean, functional note-taking app with AI-powered insights and daily reminders.**
