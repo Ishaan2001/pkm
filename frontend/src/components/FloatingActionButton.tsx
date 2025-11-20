@@ -6,14 +6,14 @@ interface FloatingActionButtonProps {
 
 const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({ onClick }) => {
   return (
-    <div className="fixed bottom-8 right-8 z-50 group">
+    <div className="fixed bottom-20 right-8 z-50 group">
       {/* Ripple effect background */}
-      <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-accent-purple rounded-full animate-ping opacity-20 scale-125" />
-      <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-accent-purple rounded-full animate-pulse opacity-30" />
+      <div className="absolute inset-0 bg-orange-500 rounded-full animate-ping opacity-20 scale-125" />
+      <div className="absolute inset-0 bg-orange-500 rounded-full animate-pulse opacity-30" />
       
       <button
         onClick={onClick}
-        className="relative w-16 h-16 bg-gradient-to-r from-primary-500 to-accent-purple text-white rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 flex items-center justify-center group-hover:rotate-90"
+        className="relative w-16 h-16 bg-orange-500 hover:bg-orange-600 text-white rounded-full shadow-2xl hover:shadow-3xl transform hover:scale-110 transition-all duration-300 flex items-center justify-center group-hover:rotate-90"
         aria-label="Create new note"
       >
         {/* Glassmorphism overlay */}

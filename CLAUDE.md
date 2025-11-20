@@ -18,7 +18,7 @@ This is a complete Note-Taking Progressive Web App with AI-powered summaries and
 - **Styling**: Tailwind CSS v3.4.0 with dark theme
 - **Theme**: Black background (#000000) with orange accents (#F97316)
 - **PWA**: Service worker for push notifications and caching
-- **Port**: Runs on http://localhost:5174
+- **Port**: Runs on http://localhost:5173
 
 ### Backend (`/backend/`)
 - **Framework**: FastAPI with Python 3.13
@@ -97,7 +97,7 @@ This is a complete Note-Taking Progressive Web App with AI-powered summaries and
 **Solution**: 
 - Proper service worker registration sequence
 - Wait for `navigator.serviceWorker.ready` before subscription
-- Fixed CORS to allow frontend port 5174
+- Fixed CORS to allow frontend port 5173
 - Improved error handling and user feedback
 
 ### Previous Fixes

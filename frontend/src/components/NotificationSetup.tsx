@@ -6,18 +6,18 @@ const NotificationSetup: React.FC = () => {
 
   useEffect(() => {
     // Check if notification prompt should be shown
-    const shouldShowPrompt = () => {
-      // Don't show if user has already dismissed or enabled notifications
-      const dismissed = localStorage.getItem('notification-prompt-dismissed');
-      const enabled = localStorage.getItem('notifications-enabled');
-      
-      if (dismissed || enabled) {
-        return false;
+    const shouldShowPrompt = async () => {
+      // Check for force reset parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('resetNotifications') === 'true') {
+        localStorage.removeItem('notification-prompt-dismissed');
+        localStorage.removeItem('notifications-enabled');
+        console.log('Notification state reset via URL parameter');
       }
       
-      // Don't show if notifications are already granted
-      if ('Notification' in window && Notification.permission === 'granted') {
-        localStorage.setItem('notifications-enabled', 'true');
+      // Don't show if user has already dismissed notifications
+      const dismissed = localStorage.getItem('notification-prompt-dismissed');
+      if (dismissed) {
         return false;
       }
       
@@ -26,17 +26,44 @@ const NotificationSetup: React.FC = () => {
         return false;
       }
       
+      // Check if we have an active push subscription
+      const enabled = localStorage.getItem('notifications-enabled');
+      if (enabled && 'serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            // We have a working subscription, don't show prompt
+            return false;
+          } else {
+            // No subscription found, clear the enabled flag and show prompt
+            localStorage.removeItem('notifications-enabled');
+          }
+        } catch (error) {
+          // Error checking subscription, clear the enabled flag
+          localStorage.removeItem('notifications-enabled');
+        }
+      }
+      
       return true;
     };
 
-    if (shouldShowPrompt()) {
-      const timer = setTimeout(() => {
-        setShowPrompt(true);
-        setTimeout(() => setIsVisible(true), 100);
-      }, 2000);
-
-      return () => clearTimeout(timer);
-    }
+    let timeoutId: NodeJS.Timeout | null = null;
+    
+    shouldShowPrompt().then(shouldShow => {
+      if (shouldShow) {
+        timeoutId = setTimeout(() => {
+          setShowPrompt(true);
+          setTimeout(() => setIsVisible(true), 100);
+        }, 2000);
+      }
+    });
+    
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, []);
 
   const handleEnableNotifications = async () => {

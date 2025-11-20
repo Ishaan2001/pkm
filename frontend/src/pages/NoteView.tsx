@@ -4,6 +4,13 @@ import { useNotes } from '../contexts/NotesContext';
 import type { Note } from '../types/note';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+interface Notebook {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
 const NoteView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -15,6 +22,11 @@ const NoteView: React.FC = () => {
   const [regenerateSummary, setRegenerateSummary] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  
+  // Notebook functionality
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [noteNotebooks, setNoteNotebooks] = useState<Set<number>>(new Set());
+  const [showNotebookModal, setShowNotebookModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -22,11 +34,79 @@ const NoteView: React.FC = () => {
       if (foundNote) {
         setNote(foundNote);
         setEditContent(foundNote.content);
+        fetchNotebooks();
+        fetchNoteNotebooks();
       } else {
         navigate('/');
       }
     }
   }, [id, getNoteById, navigate]);
+
+  const fetchNotebooks = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/notebooks');
+      if (response.ok) {
+        const data = await response.json();
+        setNotebooks(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notebooks:', error);
+    }
+  };
+
+  const fetchNoteNotebooks = async () => {
+    if (!id) return;
+    
+    try {
+      // Get all notebooks and check which ones contain this note
+      const response = await fetch('http://localhost:8000/api/notebooks');
+      if (response.ok) {
+        const allNotebooks = await response.json();
+        const noteId = parseInt(id);
+        const containingNotebooks = new Set<number>();
+        
+        // Check each notebook to see if it contains this note
+        for (const notebook of allNotebooks) {
+          const notebookResponse = await fetch(`http://localhost:8000/api/notebooks/${notebook.id}`);
+          if (notebookResponse.ok) {
+            const notebookData = await notebookResponse.json();
+            if (notebookData.notes.some((note: Note) => note.id === noteId)) {
+              containingNotebooks.add(notebook.id);
+            }
+          }
+        }
+        
+        setNoteNotebooks(containingNotebooks);
+      }
+    } catch (error) {
+      console.error('Failed to fetch note notebooks:', error);
+    }
+  };
+
+  const toggleNotebookAssignment = async (notebookId: number) => {
+    if (!note) return;
+    
+    const isCurrentlyAssigned = noteNotebooks.has(notebookId);
+    
+    try {
+      if (isCurrentlyAssigned) {
+        // Remove from notebook
+        await fetch(`http://localhost:8000/api/notebooks/${notebookId}/notes/${note.id}`, {
+          method: 'DELETE',
+        });
+      } else {
+        // Add to notebook
+        await fetch(`http://localhost:8000/api/notebooks/${notebookId}/notes/${note.id}`, {
+          method: 'POST',
+        });
+      }
+      
+      // Refresh notebook assignments
+      await fetchNoteNotebooks();
+    } catch (error) {
+      console.error('Failed to toggle notebook assignment:', error);
+    }
+  };
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -106,7 +186,7 @@ const NoteView: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-black pb-20">
       {/* Header */}
       <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -123,15 +203,25 @@ const NoteView: React.FC = () => {
               
             <div className="flex items-center gap-3">
               {!isEditing && (
-                <button
-                  onClick={handleEdit}
-                  className="btn-primary"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit
-                </button>
+                <>
+                  <button
+                    onClick={() => setShowNotebookModal(true)}
+                    className="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-orange-400 hover:bg-gray-800 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleEdit}
+                    className="btn-primary"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </button>
+                </>
               )}
               
               <button
@@ -294,6 +384,73 @@ const NoteView: React.FC = () => {
                   Delete
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notebook Assignment Modal */}
+      {showNotebookModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setShowNotebookModal(false)} />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full max-h-[80vh] overflow-hidden">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white">Manage Notebooks</h3>
+            </div>
+
+            <p className="text-gray-400 mb-4 text-sm">
+              Select which notebooks should contain this note. Notes can belong to multiple notebooks.
+            </p>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto mb-6">
+              {notebooks.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <p className="mb-4">No notebooks found.</p>
+                  <button
+                    onClick={() => {
+                      setShowNotebookModal(false);
+                      navigate('/notebooks');
+                    }}
+                    className="btn-primary text-sm"
+                  >
+                    Create First Notebook
+                  </button>
+                </div>
+              ) : (
+                notebooks.map((notebook) => (
+                  <label
+                    key={notebook.id}
+                    className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-750 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={noteNotebooks.has(notebook.id)}
+                      onChange={() => toggleNotebookAssignment(notebook.id)}
+                      className="w-5 h-5 text-orange-500 bg-gray-700 border-gray-600 rounded focus:ring-orange-500 focus:ring-2"
+                    />
+                    <div className="flex-1">
+                      <div className="text-white font-medium">{notebook.title}</div>
+                      <div className="text-gray-400 text-sm">
+                        Created {new Date(notebook.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNotebookModal(false)}
+                className="btn-secondary flex-1"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

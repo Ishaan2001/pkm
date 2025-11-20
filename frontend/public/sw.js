@@ -9,28 +9,83 @@ self.addEventListener('activate', event => {
   event.waitUntil(self.clients.claim());
 });
 
+// Add error handling for debugging
+self.addEventListener('error', event => {
+  console.error('Service Worker error:', event.error);
+});
+
+// Log when service worker is ready
+console.log('Service Worker script loaded');
+
+// Test notification function - can be called from browser console
+self.testNotification = () => {
+  console.log('Testing basic notification...');
+  return self.registration.showNotification('Test Notification', {
+    body: 'This is a test notification from the service worker',
+    icon: '/icon-192.svg',
+    tag: 'test-notification'
+  }).then(() => {
+    console.log('Test notification shown successfully');
+  }).catch(error => {
+    console.error('Test notification failed:', error);
+  });
+};
+
 // Handle push events
 self.addEventListener('push', event => {
-  console.log('Push event received');
+  console.log('Push event received', event);
   
   if (event.data) {
-    const data = event.data.json();
-    const options = {
-      body: data.body,
-      icon: '/icon-192.svg',
-      badge: '/icon-192.svg',
-      vibrate: [100, 50, 100],
-      data: data.data || {},
-      actions: [
-        {
-          action: 'view',
-          title: 'View Note'
-        }
-      ]
-    };
+    try {
+      const payload = event.data.json();
+      console.log('Push data received:', payload);
+      
+      // Extract title separately as it's not part of options
+      const notificationTitle = payload.title || 'Knowledge Base';
+      
+      const options = {
+        body: payload.body || 'New notification',
+        icon: payload.icon || '/icon-192.svg',
+        badge: payload.badge || '/icon-192.svg',
+        tag: 'knowledge-base-notification',
+        data: payload.data || {},
+        requireInteraction: false, // Changed to false for better visibility
+        silent: false,
+        vibrate: [200, 100, 200]
+      };
 
+      console.log('Showing notification with title:', notificationTitle);
+      console.log('Notification options:', options);
+      
+      event.waitUntil(
+        self.registration.showNotification(notificationTitle, options)
+          .then(() => {
+            console.log('Notification shown successfully');
+          })
+          .catch(error => {
+            console.error('Error showing notification:', error);
+          })
+      );
+    } catch (error) {
+      console.error('Error parsing push data:', error);
+      // Show fallback notification
+      event.waitUntil(
+        self.registration.showNotification('Knowledge Base', {
+          body: 'New notification (parsing error)',
+          icon: '/icon-192.svg',
+          tag: 'knowledge-base-notification'
+        })
+      );
+    }
+  } else {
+    console.log('Push event received but no data');
+    // Show a default notification if no data is provided
     event.waitUntil(
-      self.registration.showNotification(data.title || 'Knowledge Base', options)
+      self.registration.showNotification('Knowledge Base', {
+        body: 'You have a new notification',
+        icon: '/icon-192.svg',
+        tag: 'knowledge-base-notification'
+      })
     );
   }
 });

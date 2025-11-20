@@ -4,9 +4,10 @@ import type { Note } from '../types/note';
 
 interface NoteCardProps {
   note: Note;
+  searchQuery?: string;
 }
 
-const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
+const NoteCard: React.FC<NoteCardProps> = ({ note, searchQuery }) => {
   const formatDate = (dateString: string) => {
     // Handle various timestamp formats from backend
     let date: Date;
@@ -46,6 +47,23 @@ const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
     return content.substring(0, maxLength) + '...';
   };
 
+  const highlightText = (text: string, query?: string) => {
+    if (!query || !text) return text;
+    
+    const regex = new RegExp(`(${query})`, 'gi');
+    const parts = text.split(regex);
+    
+    return parts.map((part, index) => 
+      regex.test(part) ? (
+        <mark key={index} className="bg-orange-500/30 text-orange-200 px-1 rounded">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
 
   return (
     <Link to={`/note/${note.id}`} className="block">
@@ -62,7 +80,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-orange-200 font-medium leading-relaxed">
-                  {truncateContent(note.ai_summary, 100)}
+                  {highlightText(truncateContent(note.ai_summary, 100), searchQuery)}
                 </p>
               </div>
             </div>
@@ -83,7 +101,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note }) => {
         {/* Note Content */}
         <div>
           <p className="text-gray-100 text-base leading-relaxed line-clamp-3">
-            {truncateContent(note.content, note.ai_summary ? 120 : 160)}
+            {highlightText(truncateContent(note.content, note.ai_summary ? 120 : 160), searchQuery)}
           </p>
         </div>
         

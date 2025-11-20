@@ -6,7 +6,7 @@ import logging
 from pydantic import BaseModel
 
 from . import schemas
-from .database import get_db, init_db, Note, PushSubscription as DBPushSubscription
+from .database import get_db, init_db, Note, PushSubscription as DBPushSubscription, Notebook
 from .ai_service import summarize_note
 from .notification_scheduler import notification_scheduler
 
@@ -191,6 +191,158 @@ async def test_notification(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to send test notification: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to send test notification: {str(e)}")
+
+# Notebook endpoints
+@app.get("/api/notebooks", response_model=List[schemas.Notebook])
+async def get_notebooks(db: Session = Depends(get_db)):
+    """Get all notebooks with note counts"""
+    from sqlalchemy import func
+    notebooks = (
+        db.query(
+            Notebook,
+            func.count(Note.id).label('note_count')
+        )
+        .outerjoin(Notebook.notes)
+        .group_by(Notebook.id)
+        .all()
+    )
+    
+    result = []
+    for notebook, note_count in notebooks:
+        notebook_dict = {
+            "id": notebook.id,
+            "title": notebook.title,
+            "created_at": notebook.created_at,
+            "updated_at": notebook.updated_at,
+            "note_count": note_count
+        }
+        result.append(notebook_dict)
+    
+    return result
+
+@app.post("/api/notebooks", response_model=schemas.Notebook)
+async def create_notebook(notebook: schemas.NotebookCreate, db: Session = Depends(get_db)):
+    """Create a new notebook"""
+    db_notebook = Notebook(title=notebook.title)
+    db.add(db_notebook)
+    db.commit()
+    db.refresh(db_notebook)
+    
+    # Add note_count field
+    result = {
+        "id": db_notebook.id,
+        "title": db_notebook.title,
+        "created_at": db_notebook.created_at,
+        "updated_at": db_notebook.updated_at,
+        "note_count": 0
+    }
+    return result
+
+@app.get("/api/notebooks/{notebook_id}", response_model=schemas.NotebookWithNotes)
+async def get_notebook(notebook_id: int, db: Session = Depends(get_db)):
+    """Get a specific notebook with its notes"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    return notebook
+
+@app.put("/api/notebooks/{notebook_id}", response_model=schemas.Notebook)
+async def update_notebook(
+    notebook_id: int, 
+    notebook_update: schemas.NotebookUpdate, 
+    db: Session = Depends(get_db)
+):
+    """Update a notebook title"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    
+    notebook.title = notebook_update.title
+    db.commit()
+    db.refresh(notebook)
+    
+    # Get note count
+    from sqlalchemy import func
+    note_count = db.query(func.count(Note.id)).join(Notebook.notes).filter(Notebook.id == notebook_id).scalar() or 0
+    
+    result = {
+        "id": notebook.id,
+        "title": notebook.title,
+        "created_at": notebook.created_at,
+        "updated_at": notebook.updated_at,
+        "note_count": note_count
+    }
+    return result
+
+@app.delete("/api/notebooks/{notebook_id}")
+async def delete_notebook(notebook_id: int, db: Session = Depends(get_db)):
+    """Delete a notebook (notes are not deleted, only the association)"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    
+    db.delete(notebook)
+    db.commit()
+    return {"message": "Notebook deleted successfully"}
+
+@app.get("/api/notebooks/{notebook_id}/notes", response_model=List[schemas.Note])
+async def get_notebook_notes(notebook_id: int, db: Session = Depends(get_db)):
+    """Get all notes in a specific notebook"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    return notebook.notes
+
+@app.post("/api/notebooks/{notebook_id}/notes/{note_id}")
+async def add_note_to_notebook(notebook_id: int, note_id: int, db: Session = Depends(get_db)):
+    """Add a note to a notebook"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    note = db.query(Note).filter(Note.id == note_id).first()
+    
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    
+    if note not in notebook.notes:
+        notebook.notes.append(note)
+        db.commit()
+        return {"message": "Note added to notebook successfully"}
+    else:
+        return {"message": "Note is already in this notebook"}
+
+@app.delete("/api/notebooks/{notebook_id}/notes/{note_id}")
+async def remove_note_from_notebook(notebook_id: int, note_id: int, db: Session = Depends(get_db)):
+    """Remove a note from a notebook"""
+    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    note = db.query(Note).filter(Note.id == note_id).first()
+    
+    if notebook is None:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    
+    if note in notebook.notes:
+        notebook.notes.remove(note)
+        db.commit()
+        return {"message": "Note removed from notebook successfully"}
+    else:
+        return {"message": "Note is not in this notebook"}
+
+# Search endpoint
+@app.get("/api/search", response_model=schemas.SearchResult)
+async def search_notes(q: str, db: Session = Depends(get_db)):
+    """Search notes by content and AI summary"""
+    if not q.strip():
+        return {"notes": [], "total_count": 0}
+    
+    search_term = f"%{q.lower()}%"
+    notes = db.query(Note).filter(
+        Note.content.ilike(search_term) | 
+        Note.ai_summary.ilike(search_term)
+    ).all()
+    
+    return {"notes": notes, "total_count": len(notes)}
 
 @app.get("/health")
 async def health_check():
