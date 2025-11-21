@@ -37,6 +37,11 @@ if os.getenv("FRONTEND_ORIGINS"):
     additional_origins = os.getenv("FRONTEND_ORIGINS").split(",")
     allowed_origins.extend([origin.strip() for origin in additional_origins])
 
+# Custom CORS middleware to handle Vercel subdomains
+def is_vercel_origin(origin: str) -> bool:
+    """Check if origin is a Vercel deployment"""
+    return origin.endswith('.vercel.app') and origin.startswith('https://')
+
 # For production, we'll need to add the specific Vercel URL via FRONTEND_ORIGINS
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +49,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app$"  # Allow all Vercel apps
 )
 
 @app.on_event("startup")
