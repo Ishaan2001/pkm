@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LoadingSpinner from '../components/LoadingSpinner';
 import FloatingActionButton from '../components/FloatingActionButton';
+import PageHeader from '../components/PageHeader';
+import { api } from '../services/api';
 
 interface Notebook {
   id: number;
@@ -46,11 +48,8 @@ const Notebooks: React.FC = () => {
 
   const fetchNotebooks = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/notebooks');
-      if (response.ok) {
-        const data = await response.json();
-        setNotebooks(data);
-      }
+      const data = await api.get<Notebook[]>('/api/notebooks');
+      setNotebooks(data);
     } catch (error) {
       console.error('Failed to fetch notebooks:', error);
     } finally {
@@ -63,20 +62,12 @@ const Notebooks: React.FC = () => {
 
     setCreating(true);
     try {
-      const response = await fetch('http://localhost:8000/api/notebooks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: newNotebookTitle.trim() }),
+      const newNotebook = await api.post<Notebook>('/api/notebooks', {
+        title: newNotebookTitle.trim()
       });
-
-      if (response.ok) {
-        const newNotebook = await response.json();
-        setNotebooks([...notebooks, newNotebook]);
-        setNewNotebookTitle('');
-        setShowCreateModal(false);
-      }
+      setNotebooks([...notebooks, newNotebook]);
+      setNewNotebookTitle('');
+      setShowCreateModal(false);
     } catch (error) {
       console.error('Failed to create notebook:', error);
     } finally {
@@ -99,20 +90,12 @@ const Notebooks: React.FC = () => {
     if (!editingTitle.trim()) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/notebooks/${notebookId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: editingTitle.trim() }),
+      const updatedNotebook = await api.put<Notebook>(`/api/notebooks/${notebookId}`, {
+        title: editingTitle.trim()
       });
-
-      if (response.ok) {
-        const updatedNotebook = await response.json();
-        setNotebooks(notebooks.map(nb => nb.id === notebookId ? updatedNotebook : nb));
-        setEditingNotebookId(null);
-        setEditingTitle('');
-      }
+      setNotebooks(notebooks.map(nb => nb.id === notebookId ? updatedNotebook : nb));
+      setEditingNotebookId(null);
+      setEditingTitle('');
     } catch (error) {
       console.error('Failed to rename notebook:', error);
     }
@@ -128,15 +111,10 @@ const Notebooks: React.FC = () => {
     if (!deletingNotebook) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/notebooks/${deletingNotebook.id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setNotebooks(notebooks.filter(nb => nb.id !== deletingNotebook.id));
-        setShowDeleteModal(false);
-        setDeletingNotebook(null);
-      }
+      await api.delete(`/api/notebooks/${deletingNotebook.id}`);
+      setNotebooks(notebooks.filter(nb => nb.id !== deletingNotebook.id));
+      setShowDeleteModal(false);
+      setDeletingNotebook(null);
     } catch (error) {
       console.error('Failed to delete notebook:', error);
     }
@@ -164,22 +142,16 @@ const Notebooks: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black pb-20">
-      {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-white">Notebooks</h1>
-            <div className="ml-auto text-sm text-gray-400">
-              {notebooks.length} {notebooks.length === 1 ? 'notebook' : 'notebooks'}
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Notebooks"
+        subtitle={`${notebooks.length} ${notebooks.length === 1 ? 'notebook' : 'notebooks'}`}
+        maxWidth="max-w-6xl"
+        icon={
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        }
+      />
 
       {/* Content */}
       <main className="max-w-6xl mx-auto px-4 py-6">

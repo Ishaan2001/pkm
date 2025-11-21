@@ -4,6 +4,7 @@ import { useNotes } from '../contexts/NotesContext';
 import NoteCard from '../components/NoteCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 import type { Note } from '../types/note';
+import { api } from '../services/api';
 
 interface Notebook {
   id: number;
@@ -46,16 +47,13 @@ const NotebookDetail: React.FC = () => {
 
   const fetchNotebook = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/api/notebooks/${id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setNotebook(data);
-      } else if (response.status === 404) {
+      const data = await api.get<Notebook>(`/api/notebooks/${id}`);
+      setNotebook(data);
+    } catch (error: any) {
+      console.error('Failed to fetch notebook:', error);
+      if (error.status === 404) {
         navigate('/notebooks');
       }
-    } catch (error) {
-      console.error('Failed to fetch notebook:', error);
-      navigate('/notebooks');
     } finally {
       setLoading(false);
     }
@@ -87,9 +85,7 @@ const NotebookDetail: React.FC = () => {
 
     try {
       const promises = Array.from(selectedNotes).map(noteId =>
-        fetch(`http://localhost:8000/api/notebooks/${notebook.id}/notes/${noteId}`, {
-          method: 'DELETE',
-        })
+        api.delete(`/api/notebooks/${notebook.id}/notes/${noteId}`)
       );
 
       await Promise.all(promises);
@@ -107,9 +103,7 @@ const NotebookDetail: React.FC = () => {
     if (!notebook) return;
 
     try {
-      await fetch(`http://localhost:8000/api/notebooks/${notebook.id}/notes/${noteId}`, {
-        method: 'POST',
-      });
+      await api.post(`/api/notebooks/${notebook.id}/notes/${noteId}`);
       
       // Refresh notebook data
       await fetchNotebook();
@@ -143,9 +137,7 @@ const NotebookDetail: React.FC = () => {
     setIsAddingNotes(true);
     try {
       const promises = Array.from(selectedNotesToAdd).map(noteId =>
-        fetch(`http://localhost:8000/api/notebooks/${notebook.id}/notes/${noteId}`, {
-          method: 'POST',
-        })
+        api.post(`/api/notebooks/${notebook.id}/notes/${noteId}`)
       );
 
       await Promise.all(promises);

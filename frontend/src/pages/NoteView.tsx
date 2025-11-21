@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useNotes } from '../contexts/NotesContext';
 import type { Note } from '../types/note';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { api } from '../services/api';
 
 interface Notebook {
   id: number;
@@ -44,11 +45,8 @@ const NoteView: React.FC = () => {
 
   const fetchNotebooks = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/notebooks');
-      if (response.ok) {
-        const data = await response.json();
-        setNotebooks(data);
-      }
+      const data = await api.get<Notebook[]>('/api/notebooks');
+      setNotebooks(data);
     } catch (error) {
       console.error('Failed to fetch notebooks:', error);
     }
@@ -59,25 +57,23 @@ const NoteView: React.FC = () => {
     
     try {
       // Get all notebooks and check which ones contain this note
-      const response = await fetch('http://localhost:8000/api/notebooks');
-      if (response.ok) {
-        const allNotebooks = await response.json();
-        const noteId = parseInt(id);
-        const containingNotebooks = new Set<number>();
-        
-        // Check each notebook to see if it contains this note
-        for (const notebook of allNotebooks) {
-          const notebookResponse = await fetch(`http://localhost:8000/api/notebooks/${notebook.id}`);
-          if (notebookResponse.ok) {
-            const notebookData = await notebookResponse.json();
-            if (notebookData.notes.some((note: Note) => note.id === noteId)) {
-              containingNotebooks.add(notebook.id);
-            }
+      const allNotebooks = await api.get<Notebook[]>('/api/notebooks');
+      const noteId = parseInt(id);
+      const containingNotebooks = new Set<number>();
+      
+      // Check each notebook to see if it contains this note
+      for (const notebook of allNotebooks) {
+        try {
+          const notebookData = await api.get<Notebook & { notes: Note[] }>(`/api/notebooks/${notebook.id}`);
+          if (notebookData.notes.some((note: Note) => note.id === noteId)) {
+            containingNotebooks.add(notebook.id);
           }
+        } catch (error) {
+          console.error(`Failed to fetch notebook ${notebook.id}:`, error);
         }
-        
-        setNoteNotebooks(containingNotebooks);
       }
+      
+      setNoteNotebooks(containingNotebooks);
     } catch (error) {
       console.error('Failed to fetch note notebooks:', error);
     }
@@ -91,14 +87,10 @@ const NoteView: React.FC = () => {
     try {
       if (isCurrentlyAssigned) {
         // Remove from notebook
-        await fetch(`http://localhost:8000/api/notebooks/${notebookId}/notes/${note.id}`, {
-          method: 'DELETE',
-        });
+        await api.delete(`/api/notebooks/${notebookId}/notes/${note.id}`);
       } else {
         // Add to notebook
-        await fetch(`http://localhost:8000/api/notebooks/${notebookId}/notes/${note.id}`, {
-          method: 'POST',
-        });
+        await api.post(`/api/notebooks/${notebookId}/notes/${note.id}`);
       }
       
       // Refresh notebook assignments

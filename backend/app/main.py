@@ -1,14 +1,22 @@
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import logging
 from pydantic import BaseModel
+from datetime import timedelta
 
 from . import schemas
-from .database import get_db, init_db, Note, PushSubscription as DBPushSubscription, Notebook
+from .database import get_db, init_db, Note, PushSubscription as DBPushSubscription, Notebook, User
 from .ai_service import summarize_note
 from .notification_scheduler import notification_scheduler
+from .auth import (
+    authenticate_user, 
+    create_access_token, 
+    get_password_hash, 
+    get_current_active_user,
+    ACCESS_TOKEN_EXPIRE_MINUTES
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,14 +57,79 @@ async def generate_summary_task(note_id: int, content: str, db: Session):
 async def root():
     return {"message": "Notes PWA API is running"}
 
+# Authentication endpoints
+@app.post("/api/auth/signup", response_model=schemas.Token)
+async def signup(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
+    """User registration"""
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create new user
+    hashed_password = get_password_hash(user_data.password)
+    db_user = User(
+        email=user_data.email,
+        password_hash=hashed_password,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        is_active=True
+    )
+    
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": db_user.email}, expires_delta=access_token_expires
+    )
+    
+    logger.info(f"New user registered: {db_user.email}")
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/auth/login", response_model=schemas.Token)
+async def login(user_credentials: schemas.UserLogin, db: Session = Depends(get_db)):
+    """User login"""
+    user = authenticate_user(db, user_credentials.email, user_credentials.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email}, expires_delta=access_token_expires
+    )
+    
+    logger.info(f"User logged in: {user.email}")
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/auth/me", response_model=schemas.UserResponse)
+async def get_current_user_profile(current_user: User = Depends(get_current_active_user)):
+    """Get current user profile"""
+    return current_user
+
+@app.post("/api/auth/logout")
+async def logout():
+    """Logout (client-side token removal)"""
+    return {"message": "Successfully logged out"}
+
 @app.post("/api/notes", response_model=schemas.Note)
 async def create_note(
     note: schemas.NoteCreate, 
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Create a new note and generate AI summary in background"""
-    db_note = Note(content=note.content)
+    db_note = Note(content=note.content, user_id=current_user.id)
     db.add(db_note)
     db.commit()
     db.refresh(db_note)
@@ -67,15 +140,24 @@ async def create_note(
     return db_note
 
 @app.get("/api/notes", response_model=List[schemas.Note])
-async def get_notes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Get all notes"""
-    notes = db.query(Note).offset(skip).limit(limit).all()
+async def get_notes(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all notes for current user"""
+    notes = db.query(Note).filter(Note.user_id == current_user.id).offset(skip).limit(limit).all()
     return notes
 
 @app.get("/api/notes/{note_id}", response_model=schemas.Note)
-async def get_note(note_id: int, db: Session = Depends(get_db)):
+async def get_note(
+    note_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Get a specific note by ID"""
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
     return note
@@ -85,10 +167,11 @@ async def update_note(
     note_id: int, 
     note_update: schemas.NoteUpdate, 
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Update a note and optionally regenerate AI summary"""
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
     
@@ -103,9 +186,13 @@ async def update_note(
     return note
 
 @app.delete("/api/notes/{note_id}")
-async def delete_note(note_id: int, db: Session = Depends(get_db)):
+async def delete_note(
+    note_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Delete a note"""
-    note = db.query(Note).filter(Note.id == note_id).first()
+    note = db.query(Note).filter(Note.id == note_id, Note.user_id == current_user.id).first()
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
     
@@ -117,7 +204,11 @@ class PushSubscription(BaseModel):
     subscription: dict
 
 @app.post("/api/notifications/subscribe")
-async def subscribe_to_notifications(subscription_data: PushSubscription, db: Session = Depends(get_db)):
+async def subscribe_to_notifications(
+    subscription_data: PushSubscription, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Subscribe to push notifications"""
     try:
         subscription = subscription_data.subscription
@@ -129,9 +220,10 @@ async def subscribe_to_notifications(subscription_data: PushSubscription, db: Se
         if not all([endpoint, p256dh, auth]):
             raise HTTPException(status_code=400, detail="Invalid subscription data")
         
-        # Check if subscription already exists
+        # Check if subscription already exists for this user
         existing_sub = db.query(DBPushSubscription).filter(
-            DBPushSubscription.endpoint == endpoint
+            DBPushSubscription.endpoint == endpoint,
+            DBPushSubscription.user_id == current_user.id
         ).first()
         
         if existing_sub:
@@ -139,17 +231,18 @@ async def subscribe_to_notifications(subscription_data: PushSubscription, db: Se
             existing_sub.p256dh_key = p256dh
             existing_sub.auth_key = auth
             existing_sub.is_active = True
-            logger.info(f"Updated existing push subscription for endpoint: {endpoint}")
+            logger.info(f"Updated existing push subscription for user {current_user.email}")
         else:
             # Create new subscription
             db_subscription = DBPushSubscription(
                 endpoint=endpoint,
                 p256dh_key=p256dh,
                 auth_key=auth,
+                user_id=current_user.id,
                 is_active=True
             )
             db.add(db_subscription)
-            logger.info(f"Created new push subscription for endpoint: {endpoint}")
+            logger.info(f"Created new push subscription for user {current_user.email}")
         
         db.commit()
         return {"message": "Successfully subscribed to notifications"}
@@ -159,20 +252,27 @@ async def subscribe_to_notifications(subscription_data: PushSubscription, db: Se
         raise HTTPException(status_code=500, detail="Failed to subscribe")
 
 @app.post("/api/notifications/test")
-async def test_notification(db: Session = Depends(get_db)):
+async def test_notification(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Test endpoint to trigger a notification immediately"""
     try:
         from .push_service import push_service
         
-        # Find a note with AI summary for testing
-        note = db.query(Note).filter(Note.ai_summary.isnot(None)).first()
+        # Find a note with AI summary for the current user
+        note = db.query(Note).filter(
+            Note.user_id == current_user.id,
+            Note.ai_summary.isnot(None)
+        ).first()
         
         if not note:
             raise HTTPException(status_code=404, detail="No notes with AI summaries found")
         
-        # Send test notification
-        successful_sends, failed_sends = await push_service.send_notification_to_all(
+        # Send test notification to current user only
+        successful_sends, failed_sends = await push_service.send_notification_to_user(
             db=db,
+            user_id=current_user.id,
             title="🧪 Test Notification - Knowledge Base",
             body=f"Testing push notifications! Here's a sample AI summary: {note.ai_summary[:100]}...",
             data={
@@ -194,14 +294,18 @@ async def test_notification(db: Session = Depends(get_db)):
 
 # Notebook endpoints
 @app.get("/api/notebooks", response_model=List[schemas.Notebook])
-async def get_notebooks(db: Session = Depends(get_db)):
-    """Get all notebooks with note counts"""
+async def get_notebooks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all notebooks with note counts for current user"""
     from sqlalchemy import func
     notebooks = (
         db.query(
             Notebook,
             func.count(Note.id).label('note_count')
         )
+        .filter(Notebook.user_id == current_user.id)
         .outerjoin(Notebook.notes)
         .group_by(Notebook.id)
         .all()
@@ -221,9 +325,13 @@ async def get_notebooks(db: Session = Depends(get_db)):
     return result
 
 @app.post("/api/notebooks", response_model=schemas.Notebook)
-async def create_notebook(notebook: schemas.NotebookCreate, db: Session = Depends(get_db)):
+async def create_notebook(
+    notebook: schemas.NotebookCreate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Create a new notebook"""
-    db_notebook = Notebook(title=notebook.title)
+    db_notebook = Notebook(title=notebook.title, user_id=current_user.id)
     db.add(db_notebook)
     db.commit()
     db.refresh(db_notebook)
@@ -239,9 +347,16 @@ async def create_notebook(notebook: schemas.NotebookCreate, db: Session = Depend
     return result
 
 @app.get("/api/notebooks/{notebook_id}", response_model=schemas.NotebookWithNotes)
-async def get_notebook(notebook_id: int, db: Session = Depends(get_db)):
+async def get_notebook(
+    notebook_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Get a specific notebook with its notes"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return notebook
@@ -250,10 +365,14 @@ async def get_notebook(notebook_id: int, db: Session = Depends(get_db)):
 async def update_notebook(
     notebook_id: int, 
     notebook_update: schemas.NotebookUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     """Update a notebook title"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
     
@@ -275,9 +394,16 @@ async def update_notebook(
     return result
 
 @app.delete("/api/notebooks/{notebook_id}")
-async def delete_notebook(notebook_id: int, db: Session = Depends(get_db)):
+async def delete_notebook(
+    notebook_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Delete a notebook (notes are not deleted, only the association)"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
     
@@ -286,18 +412,36 @@ async def delete_notebook(notebook_id: int, db: Session = Depends(get_db)):
     return {"message": "Notebook deleted successfully"}
 
 @app.get("/api/notebooks/{notebook_id}/notes", response_model=List[schemas.Note])
-async def get_notebook_notes(notebook_id: int, db: Session = Depends(get_db)):
+async def get_notebook_notes(
+    notebook_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Get all notes in a specific notebook"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
     return notebook.notes
 
 @app.post("/api/notebooks/{notebook_id}/notes/{note_id}")
-async def add_note_to_notebook(notebook_id: int, note_id: int, db: Session = Depends(get_db)):
+async def add_note_to_notebook(
+    notebook_id: int, 
+    note_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Add a note to a notebook"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
-    note = db.query(Note).filter(Note.id == note_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
+    note = db.query(Note).filter(
+        Note.id == note_id, 
+        Note.user_id == current_user.id
+    ).first()
     
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
@@ -312,10 +456,21 @@ async def add_note_to_notebook(notebook_id: int, note_id: int, db: Session = Dep
         return {"message": "Note is already in this notebook"}
 
 @app.delete("/api/notebooks/{notebook_id}/notes/{note_id}")
-async def remove_note_from_notebook(notebook_id: int, note_id: int, db: Session = Depends(get_db)):
+async def remove_note_from_notebook(
+    notebook_id: int, 
+    note_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Remove a note from a notebook"""
-    notebook = db.query(Notebook).filter(Notebook.id == notebook_id).first()
-    note = db.query(Note).filter(Note.id == note_id).first()
+    notebook = db.query(Notebook).filter(
+        Notebook.id == notebook_id, 
+        Notebook.user_id == current_user.id
+    ).first()
+    note = db.query(Note).filter(
+        Note.id == note_id, 
+        Note.user_id == current_user.id
+    ).first()
     
     if notebook is None:
         raise HTTPException(status_code=404, detail="Notebook not found")
@@ -331,15 +486,19 @@ async def remove_note_from_notebook(notebook_id: int, note_id: int, db: Session 
 
 # Search endpoint
 @app.get("/api/search", response_model=schemas.SearchResult)
-async def search_notes(q: str, db: Session = Depends(get_db)):
+async def search_notes(
+    q: str, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     """Search notes by content and AI summary"""
     if not q.strip():
         return {"notes": [], "total_count": 0}
     
     search_term = f"%{q.lower()}%"
     notes = db.query(Note).filter(
-        Note.content.ilike(search_term) | 
-        Note.ai_summary.ilike(search_term)
+        Note.user_id == current_user.id,
+        (Note.content.ilike(search_term) | Note.ai_summary.ilike(search_term))
     ).all()
     
     return {"notes": notes, "total_count": len(notes)}

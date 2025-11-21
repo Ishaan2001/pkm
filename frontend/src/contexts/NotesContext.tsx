@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Note, NoteCreate, NoteUpdate } from '../types/note';
-
-const API_BASE = 'http://localhost:8000/api';
+import { api } from '../services/api';
 
 interface NotesContextType {
   notes: Note[];
@@ -33,11 +32,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${API_BASE}/notes`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch notes');
-      }
-      const data = await response.json();
+      const data = await api.get<Note[]>('/api/notes');
       setNotes(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -47,19 +42,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const createNote = async (noteData: NoteCreate): Promise<Note> => {
-    const response = await fetch(`${API_BASE}/notes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(noteData),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to create note');
-    }
-
-    const newNote = await response.json();
+    const newNote = await api.post<Note>('/api/notes', noteData);
     setNotes(prev => [newNote, ...prev]);
     
     // Poll for AI summary generation
@@ -72,16 +55,13 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       
       try {
-        const summaryResponse = await fetch(`${API_BASE}/notes/${noteId}`);
-        if (summaryResponse.ok) {
-          const updatedNote = await summaryResponse.json();
-          if (updatedNote.ai_summary) {
-            // AI summary is ready, update the note in state
-            setNotes(prev => prev.map(note => 
-              note.id === noteId ? updatedNote : note
-            ));
-            return;
-          }
+        const updatedNote = await api.get<Note>(`/api/notes/${noteId}`);
+        if (updatedNote.ai_summary) {
+          // AI summary is ready, update the note in state
+          setNotes(prev => prev.map(note => 
+            note.id === noteId ? updatedNote : note
+          ));
+          return;
         }
       } catch (error) {
         console.error('Failed to check for AI summary:', error);
@@ -98,19 +78,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateNote = async (id: number, noteData: NoteUpdate): Promise<Note> => {
-    const response = await fetch(`${API_BASE}/notes/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(noteData),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to update note');
-    }
-
-    const updatedNote = await response.json();
+    const updatedNote = await api.put<Note>(`/api/notes/${id}`, noteData);
     setNotes(prev => prev.map(note => note.id === id ? updatedNote : note));
     
     // If regenerating summary, poll for the updated summary
@@ -124,15 +92,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         
         try {
-          const summaryResponse = await fetch(`${API_BASE}/notes/${noteId}`);
-          if (summaryResponse.ok) {
-            const refreshedNote = await summaryResponse.json();
-            if (refreshedNote.ai_summary && refreshedNote.ai_summary !== updatedNote.ai_summary) {
-              setNotes(prev => prev.map(note => 
-                note.id === noteId ? refreshedNote : note
-              ));
-              return;
-            }
+          const refreshedNote = await api.get<Note>(`/api/notes/${noteId}`);
+          if (refreshedNote.ai_summary && refreshedNote.ai_summary !== updatedNote.ai_summary) {
+            setNotes(prev => prev.map(note => 
+              note.id === noteId ? refreshedNote : note
+            ));
+            return;
           }
         } catch (error) {
           console.error('Failed to check for regenerated AI summary:', error);
@@ -148,14 +113,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteNote = async (id: number): Promise<void> => {
-    const response = await fetch(`${API_BASE}/notes/${id}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to delete note');
-    }
-
+    await api.delete(`/api/notes/${id}`);
     setNotes(prev => prev.filter(note => note.id !== id));
   };
 

@@ -28,7 +28,7 @@ class PushNotificationService:
         
         if not active_subscriptions:
             logger.info("No active push subscriptions found")
-            return
+            return 0, 0
         
         successful_sends = 0
         failed_sends = 0
@@ -56,6 +56,45 @@ class PushNotificationService:
             logger.info(f"Marked {len(inactive_subscriptions)} subscriptions as inactive")
         
         logger.info(f"Push notification sent: {successful_sends} successful, {failed_sends} failed")
+        return successful_sends, failed_sends
+
+    async def send_notification_to_user(self, db: Session, user_id: int, title: str, body: str, data: Optional[dict] = None):
+        """Send push notification to all active subscriptions for a specific user"""
+        active_subscriptions = db.query(PushSubscription).filter(
+            PushSubscription.user_id == user_id,
+            PushSubscription.is_active == True
+        ).all()
+        
+        if not active_subscriptions:
+            logger.info(f"No active push subscriptions found for user {user_id}")
+            return 0, 0
+        
+        successful_sends = 0
+        failed_sends = 0
+        inactive_subscriptions = []
+        
+        for subscription in active_subscriptions:
+            try:
+                success = await self._send_to_subscription(subscription, title, body, data)
+                if success:
+                    successful_sends += 1
+                else:
+                    failed_sends += 1
+                    inactive_subscriptions.append(subscription.id)
+            except Exception as e:
+                logger.error(f"Error sending to subscription {subscription.id}: {e}")
+                failed_sends += 1
+                inactive_subscriptions.append(subscription.id)
+        
+        # Mark failed subscriptions as inactive
+        if inactive_subscriptions:
+            db.query(PushSubscription).filter(
+                PushSubscription.id.in_(inactive_subscriptions)
+            ).update({"is_active": False})
+            db.commit()
+            logger.info(f"Marked {len(inactive_subscriptions)} subscriptions as inactive")
+        
+        logger.info(f"Push notification sent to user {user_id}: {successful_sends} successful, {failed_sends} failed")
         return successful_sends, failed_sends
 
     async def _send_to_subscription(self, subscription: PushSubscription, title: str, body: str, data: Optional[dict] = None) -> bool:
