@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// Get API base URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || `${API_BASE_URL}';
+
 const NotificationSetup: React.FC = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -110,7 +113,7 @@ const NotificationSetup: React.FC = () => {
           });
           
           // Send subscription to backend
-          const response = await fetch('http://localhost:8000/api/notifications/subscribe', {
+          const response = await fetch(`${API_BASE_URL}/api/notifications/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 

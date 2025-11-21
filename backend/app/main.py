@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import logging
+import os
 from pydantic import BaseModel
 from datetime import timedelta
 
@@ -23,9 +24,23 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Notes PWA API", version="1.0.0")
 
+# Configure CORS for both development and production
+allowed_origins = [
+    "http://localhost:5173", 
+    "http://localhost:5174", 
+    "http://127.0.0.1:5173", 
+    "http://127.0.0.1:5174",  # Development
+]
+
+# Add additional origins from environment variable (for production)
+if os.getenv("FRONTEND_ORIGINS"):
+    additional_origins = os.getenv("FRONTEND_ORIGINS").split(",")
+    allowed_origins.extend([origin.strip() for origin in additional_origins])
+
+# For production, we'll need to add the specific Vercel URL via FRONTEND_ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"],  # Vite default ports
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

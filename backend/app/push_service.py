@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import List, Optional
 from pywebpush import webpush, WebPushException
 from sqlalchemy.orm import Session
@@ -7,11 +8,11 @@ from .database import PushSubscription
 
 logger = logging.getLogger(__name__)
 
-# VAPID keys generated for this application
-VAPID_PRIVATE_KEY = "CJxrXYFUOEzkYCKEqD6DLapI9Qwmu-1NA7L36u8caLQ"
-VAPID_PUBLIC_KEY = "BLlpxAkzak5Y9Bkp6wU_Q3TnXDCSjJB1yC0_sEfgxHYRMrzJhngxZU8vJ3IXNmFx2Ls8h7NaHwpmwbhPZeVXPM0"
+# VAPID keys - use environment variables in production, fallback to defaults for development
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "CJxrXYFUOEzkYCKEqD6DLapI9Qwmu-1NA7L36u8caLQ")
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "BLlpxAkzak5Y9Bkp6wU_Q3TnXDCSjJB1yC0_sEfgxHYRMrzJhngxZU8vJ3IXNmFx2Ls8h7NaHwpmwbhPZeVXPM0")
 VAPID_CLAIMS = {
-    "sub": "mailto:your-email@example.com"
+    "sub": os.getenv("VAPID_EMAIL", "mailto:your-email@example.com")
 }
 
 class PushNotificationService:
