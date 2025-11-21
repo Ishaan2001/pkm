@@ -1,7 +1,7 @@
 const VAPID_PUBLIC_KEY = 'BLlpxAkzak5Y9Bkp6wU_Q3TnXDCSjJB1yC0_sEfgxHYRMrzJhngxZU8vJ3IXNmFx2Ls8h7NaHwpmwbhPZeVXPM0';
 
 // Get API base URL from environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || `${API_BASE_URL}';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 class NotificationService {
   private vapidPublicKey = VAPID_PUBLIC_KEY;
@@ -21,6 +21,8 @@ class NotificationService {
     }
 
     try {
+      // Register custom service worker for push notifications
+      await navigator.serviceWorker.register('/push-sw.js');
       const registration = await navigator.serviceWorker.ready;
       
       // Check for existing subscription and unsubscribe if it exists
@@ -45,7 +47,7 @@ class NotificationService {
 
   private async sendSubscriptionToServer(subscription: PushSubscription) {
     try {
-      await fetch(`${API_BASE_URL}/api/notifications/subscribe', {
+      await fetch(`${API_BASE_URL}/api/notifications/subscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -7,10 +7,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      strategies: 'injectManifest',
-      srcDir: 'public',
-      filename: 'sw.js',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      registerType: 'autoUpdate',
+      includeAssets: ['icon-192.svg', 'icon-512.svg'],
       manifest: {
         name: 'Knowledge Base PWA',
         short_name: 'Knowledge Base',
@@ -32,6 +30,9 @@ export default defineConfig({
             type: 'image/svg+xml'
           }
         ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       }
     })
   ],

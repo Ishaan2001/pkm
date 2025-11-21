@@ -99,18 +99,8 @@ const NotebookDetail: React.FC = () => {
     }
   };
 
-  const addNoteToNotebook = async (noteId: number) => {
-    if (!notebook) return;
-
-    try {
-      await api.post(`/api/notebooks/${notebook.id}/notes/${noteId}`);
-      
-      // Refresh notebook data
-      await fetchNotebook();
-    } catch (error) {
-      console.error('Failed to add note to notebook:', error);
-    }
-  };
+  // Note: Single note addition is handled by addSelectedNotesToNotebook for consistency
+  // If needed in the future, this function can be uncommented and used
 
   const toggleNoteToAdd = (noteId: number) => {
     const newSelected = new Set(selectedNotesToAdd);
