@@ -21,8 +21,6 @@ class NotificationService {
     }
 
     try {
-      // Register custom service worker for push notifications
-      await navigator.serviceWorker.register('/push-sw.js');
       const registration = await navigator.serviceWorker.ready;
       
       // Check for existing subscription and unsubscribe if it exists

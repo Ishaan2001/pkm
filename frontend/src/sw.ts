@@ -1,38 +1,31 @@
-// Service Worker for push notifications
-self.addEventListener('install', event => {
-  console.log('Service Worker installing');
-  self.skipWaiting();
-});
+/// <reference lib="webworker" />
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { clientsClaim } from 'workbox-core'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 
-self.addEventListener('activate', event => {
-  console.log('Service Worker activating');
-  event.waitUntil(self.clients.claim());
-});
+declare const self: ServiceWorkerGlobalScope
 
-// Add error handling for debugging
-self.addEventListener('error', event => {
-  console.error('Service Worker error:', event.error);
-});
+// self.__WB_MANIFEST is default injection point
+precacheAndRoute(self.__WB_MANIFEST)
 
-// Log when service worker is ready
-console.log('Service Worker script loaded');
+// clean old assets
+cleanupOutdatedCaches()
 
-// Test notification function - can be called from browser console
-self.testNotification = () => {
-  console.log('Testing basic notification...');
-  return self.registration.showNotification('Test Notification', {
-    body: 'This is a test notification from the service worker',
-    icon: '/icon-192.svg',
-    tag: 'test-notification'
-  }).then(() => {
-    console.log('Test notification shown successfully');
-  }).catch(error => {
-    console.error('Test notification failed:', error);
-  });
-};
+let allowlist: undefined | RegExp[]
+if (import.meta.env.DEV)
+  allowlist = [/^\/$/]
 
-// Handle push events
-self.addEventListener('push', event => {
+// to allow work offline
+registerRoute(new NavigationRoute(
+  createHandlerBoundToURL('/'),
+  { allowlist }
+))
+
+self.skipWaiting()
+clientsClaim()
+
+// Push notification handling
+self.addEventListener('push', (event: any) => {
   console.log('Push event received', event);
   
   if (event.data) {
@@ -43,15 +36,14 @@ self.addEventListener('push', event => {
       // Extract title separately as it's not part of options
       const notificationTitle = payload.title || 'Knowledge Base';
       
-      const options = {
+      const options: NotificationOptions = {
         body: payload.body || 'New notification',
         icon: payload.icon || '/icon-192.svg',
         badge: payload.badge || '/icon-192.svg',
         tag: 'knowledge-base-notification',
         data: payload.data || {},
-        requireInteraction: false, // Changed to false for better visibility
-        silent: false,
-        vibrate: [200, 100, 200]
+        requireInteraction: false,
+        silent: false
       };
 
       console.log('Showing notification with title:', notificationTitle);
@@ -62,7 +54,7 @@ self.addEventListener('push', event => {
           .then(() => {
             console.log('Notification shown successfully');
           })
-          .catch(error => {
+          .catch((error: Error) => {
             console.error('Error showing notification:', error);
           })
       );
@@ -91,7 +83,7 @@ self.addEventListener('push', event => {
 });
 
 // Handle notification clicks
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event: any) => {
   console.log('Notification click received', event);
   
   event.notification.close();
@@ -108,17 +100,17 @@ self.addEventListener('notificationclick', event => {
 
   if (event.action === 'view' || !event.action) {
     event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList: any) => {
         // Check if there's an existing window we can focus
         for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            client.focus();
-            client.navigate(targetUrl);
+          if (client.url.includes(self.location.origin)) {
+            (client as any).focus?.();
+            (client as any).navigate?.(targetUrl);
             return;
           }
         }
         // If no existing window, open a new one
-        return clients.openWindow(targetUrl);
+        return self.clients.openWindow(targetUrl);
       })
     );
   }
