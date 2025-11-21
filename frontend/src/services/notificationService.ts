@@ -47,11 +47,18 @@ class NotificationService {
 
   private async sendSubscriptionToServer(subscription: PushSubscription) {
     try {
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       await fetch(`${API_BASE_URL}/api/notifications/subscribe`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           subscription: subscription.toJSON()
         }),
