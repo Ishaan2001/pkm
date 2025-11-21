@@ -90,14 +90,11 @@ const NotificationSetup: React.FC = () => {
         icon: '/icon-192.svg'
       });
 
-      // Step 3: Register service worker and wait for it to be ready
+      // Step 3: Wait for the Vite PWA service worker to be ready (already auto-registered)
       if ('serviceWorker' in navigator && 'PushManager' in window) {
         try {
-          // Register the service worker
-          const registration = await navigator.serviceWorker.register('/sw.js');
-          
-          // Wait for the service worker to be ready
-          await navigator.serviceWorker.ready;
+          // Wait for the service worker to be ready (Vite PWA handles registration automatically)
+          const registration = await navigator.serviceWorker.ready;
           
           // Check for existing subscription and unsubscribe if it exists
           const existingSubscription = await registration.pushManager.getSubscription();

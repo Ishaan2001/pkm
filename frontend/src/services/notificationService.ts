@@ -21,6 +21,7 @@ class NotificationService {
     }
 
     try {
+      // Wait for Vite PWA service worker to be ready (auto-registered)
       const registration = await navigator.serviceWorker.ready;
       
       // Check for existing subscription and unsubscribe if it exists
