@@ -3,6 +3,34 @@ const VAPID_PUBLIC_KEY = 'BLlpxAkzak5Y9Bkp6wU_Q3TnXDCSjJB1yC0_sEfgxHYRMrzJhngxZU
 // Get API base URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Enhanced logging for notification service
+const log = (message: string, data?: unknown) => {
+  console.log(`[NotificationService] ${message}`, data || '');
+};
+
+// Shared helper function
+const waitForServiceWorker = async (timeoutMs: number = 10000): Promise<ServiceWorkerRegistration | null> => {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service workers not supported');
+  }
+  
+  const timeoutPromise = new Promise<null>((_, reject) => {
+    setTimeout(() => reject(new Error('Service worker timeout')), timeoutMs);
+  });
+  
+  try {
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      timeoutPromise
+    ]);
+    log('Service worker ready', registration);
+    return registration as ServiceWorkerRegistration;
+  } catch (error) {
+    log('Service worker failed to become ready', error);
+    return null;
+  }
+};
+
 class NotificationService {
   private vapidPublicKey = VAPID_PUBLIC_KEY;
 
@@ -70,7 +98,7 @@ class NotificationService {
   private urlBase64ToUint8Array(base64String: string) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
+      .replace(/-/g, '+')
       .replace(/_/g, '/');
 
     const rawData = window.atob(base64);
@@ -99,9 +127,46 @@ class NotificationService {
 
   showLocalNotification(title: string, options?: NotificationOptions) {
     if (Notification.permission === 'granted') {
-      new Notification(title, options);
+      try {
+        const notification = new Notification(title, options);
+        log('Local notification shown', { title });
+        return notification;
+      } catch (error) {
+        log('Failed to show local notification', error);
+      }
+    } else {
+      log('Cannot show notification - permission not granted', Notification.permission);
     }
+    return null;
+  }
+  
+  // Enhanced debugging method
+  async debugSubscriptionState(): Promise<unknown> {
+    const state = {
+      notificationSupport: 'Notification' in window,
+      notificationPermission: 'Notification' in window ? Notification.permission : 'N/A',
+      serviceWorkerSupport: 'serviceWorker' in navigator,
+      pushManagerSupport: 'PushManager' in window,
+      localStorageEnabled: localStorage.getItem('notifications-enabled'),
+      localStorageDismissed: localStorage.getItem('notification-prompt-dismissed')
+    };
+    
+    if (state.serviceWorkerSupport && state.pushManagerSupport) {
+      const subscriptionStatus = await this.getSubscriptionStatus();
+      Object.assign(state, {
+        subscriptionStatus,
+        swReady: !!await waitForServiceWorker(2000)
+      });
+    }
+    
+    log('Debug subscription state', state);
+    return state;
   }
 }
 
 export const notificationService = new NotificationService();
+
+// Global debug helper
+(window as any).debugNotifications = () => {
+  return notificationService.debugSubscriptionState();
+};

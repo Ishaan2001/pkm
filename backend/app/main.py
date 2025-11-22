@@ -238,8 +238,21 @@ async def subscribe_to_notifications(
         p256dh = keys.get("p256dh")
         auth = keys.get("auth")
         
+        logger.info(f"Processing notification subscription for user {current_user.email}")
+        
         if not all([endpoint, p256dh, auth]):
-            raise HTTPException(status_code=400, detail="Invalid subscription data")
+            logger.error(f"Invalid subscription data: endpoint={bool(endpoint)}, p256dh={bool(p256dh)}, auth={bool(auth)}")
+            raise HTTPException(
+                status_code=400, 
+                detail={
+                    "error": "Invalid subscription data",
+                    "missing_fields": {
+                        "endpoint": not endpoint,
+                        "p256dh": not p256dh,
+                        "auth": not auth
+                    }
+                }
+            )
         
         # Check if subscription already exists for this user
         existing_sub = db.query(DBPushSubscription).filter(
@@ -266,11 +279,56 @@ async def subscribe_to_notifications(
             logger.info(f"Created new push subscription for user {current_user.email}")
         
         db.commit()
-        return {"message": "Successfully subscribed to notifications"}
-    except Exception as e:
-        logger.error(f"Failed to subscribe to notifications: {e}")
+        logger.info(f"Successfully processed notification subscription for user {current_user.email}")
+        return {
+            "message": "Successfully subscribed to notifications",
+            "subscription_id": existing_sub.id if existing_sub else db_subscription.id
+        }
+    except HTTPException:
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to subscribe")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error subscribing to notifications for user {current_user.email}: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500, 
+            detail={
+                "error": "Internal server error",
+                "message": "Failed to process subscription"
+            }
+        )
+
+@app.post("/api/notifications/validate")
+async def validate_push_subscription(
+    subscription_data: PushSubscription,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Validate if a push subscription is still active and valid"""
+    try:
+        subscription = subscription_data.subscription
+        endpoint = subscription.get("endpoint")
+        
+        if not endpoint:
+            raise HTTPException(status_code=400, detail="Invalid subscription data")
+        
+        # Check if subscription exists in database
+        db_subscription = db.query(DBPushSubscription).filter(
+            DBPushSubscription.endpoint == endpoint,
+            DBPushSubscription.user_id == current_user.id,
+            DBPushSubscription.is_active == True
+        ).first()
+        
+        if not db_subscription:
+            logger.info(f"Subscription validation failed - not found for user {current_user.email}")
+            return {"valid": False, "reason": "Subscription not found or inactive"}
+        
+        logger.info(f"Subscription validated successfully for user {current_user.email}")
+        return {"valid": True, "subscription_id": db_subscription.id}
+        
+    except Exception as e:
+        logger.error(f"Error validating subscription for user {current_user.email}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate subscription")
 
 @app.post("/api/notifications/test")
 async def test_notification(

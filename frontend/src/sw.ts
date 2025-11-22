@@ -5,8 +5,14 @@ import { NavigationRoute, registerRoute } from 'workbox-routing'
 
 declare const self: ServiceWorkerGlobalScope
 
+// Enhanced logging for service worker
+const log = (message: string, data?: any) => {
+  console.log(`[ServiceWorker] ${message}`, data || '');
+};
+
 // self.__WB_MANIFEST is default injection point
 precacheAndRoute(self.__WB_MANIFEST)
+log('Service worker precaching configured');
 
 // clean old assets
 cleanupOutdatedCaches()
@@ -24,14 +30,36 @@ registerRoute(new NavigationRoute(
 self.skipWaiting()
 clientsClaim()
 
-// Push notification handling
+// Service worker lifecycle logging
+self.addEventListener('install', (_event) => {
+  log('Service worker installing', { timestamp: new Date().toISOString() });
+});
+
+self.addEventListener('activate', (_event) => {
+  log('Service worker activated', { timestamp: new Date().toISOString() });
+});
+
+self.addEventListener('message', (event) => {
+  log('Service worker message received', event.data);
+  
+  // Handle debugging requests
+  if (event.data && event.data.type === 'GET_SW_STATE') {
+    event.ports[0].postMessage({
+      swVersion: '1.0.0',
+      timestamp: new Date().toISOString(),
+      ready: true
+    });
+  }
+});
+
+// Enhanced push notification handling
 self.addEventListener('push', (event: any) => {
-  console.log('Push event received', event);
+  log('Push event received', { hasData: !!event.data, timestamp: new Date().toISOString() });
   
   if (event.data) {
     try {
       const payload = event.data.json();
-      console.log('Push data received:', payload);
+      log('Push data received', payload);
       
       // Extract title separately as it's not part of options
       const notificationTitle = payload.title || 'Knowledge Base';
@@ -46,20 +74,19 @@ self.addEventListener('push', (event: any) => {
         silent: false
       };
 
-      console.log('Showing notification with title:', notificationTitle);
-      console.log('Notification options:', options);
+      log('Showing notification', { title: notificationTitle, options });
       
       event.waitUntil(
         self.registration.showNotification(notificationTitle, options)
           .then(() => {
-            console.log('Notification shown successfully');
+            log('Notification shown successfully');
           })
           .catch((error: Error) => {
-            console.error('Error showing notification:', error);
+            log('Error showing notification', error);
           })
       );
     } catch (error) {
-      console.error('Error parsing push data:', error);
+      log('Error parsing push data', error);
       // Show fallback notification
       event.waitUntil(
         self.registration.showNotification('Knowledge Base', {
@@ -70,7 +97,7 @@ self.addEventListener('push', (event: any) => {
       );
     }
   } else {
-    console.log('Push event received but no data');
+    log('Push event received but no data');
     // Show a default notification if no data is provided
     event.waitUntil(
       self.registration.showNotification('Knowledge Base', {
@@ -82,9 +109,13 @@ self.addEventListener('push', (event: any) => {
   }
 });
 
-// Handle notification clicks
+// Enhanced notification click handling
 self.addEventListener('notificationclick', (event: any) => {
-  console.log('Notification click received', event);
+  log('Notification click received', {
+    action: event.action,
+    tag: event.notification.tag,
+    data: event.notification.data
+  });
   
   event.notification.close();
 
