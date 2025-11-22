@@ -23,7 +23,7 @@ if (import.meta.env.DEV)
 
 // to allow work offline
 registerRoute(new NavigationRoute(
-  createHandlerBoundToURL('/'),
+  createHandlerBoundToURL('/index.html'),
   { allowlist }
 ))
 

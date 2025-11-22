@@ -4,8 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 // Get API base URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// Import debugging utilities
-import { logNotificationState } from '../utils/notificationDebug';
 
 // Enhanced logging helper
 const log = (message: string, data?: unknown) => {
@@ -62,7 +60,6 @@ const NotificationSetup: React.FC = () => {
     // Enhanced prompt visibility logic with auth awareness
     const shouldShowPrompt = async () => {
       log('Checking if notification prompt should be shown');
-      await logNotificationState('Prompt Check');
       
       // Check for force reset parameter
       const urlParams = new URLSearchParams(window.location.search);
@@ -173,7 +170,6 @@ const NotificationSetup: React.FC = () => {
     
     setIsProcessing(true);
     log('Starting notification setup process');
-    await logNotificationState('Setup Start');
     
     try {
       // Step 1: Check authentication

@@ -6,8 +6,6 @@ import App from './App.tsx'
 // Register service worker for PWA and push notifications
 import { registerSW } from 'virtual:pwa-register'
 
-// Import notification debugging utilities
-import './utils/notificationDebug'
 
 // Enhanced service worker registration with debugging
 registerSW({ 
